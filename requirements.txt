@@ -1,0 +1,26 @@
+fastapi==0.109.0
+uvicorn==0.27.0
+streamlit==1.31.0
+pandas==2.2.0
+numpy==1.26.3
+yfinance==0.2.36
+pandas_ta==0.3.14b0
+requests==2.31.0
+beautifulsoup4==4.12.3
+python-dotenv==1.0.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# Vision
+pytesseract==0.3.10
+pdf2image==1.17.0
+opencv-python-headless==4.9.0.80
+Pillow==10.2.0
+
+# NLP
+torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu
+transformers==4.37.2
+scikit-learn==1.4.0
+
+# Social Scraper / Mock
+faker==22.6.0
