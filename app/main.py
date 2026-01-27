@@ -24,9 +24,10 @@ def root():
     return {"message": "InvestAI API is running"}
 
 # specialized routers
-from app.api.endpoints import market, vision, nlp, social
+from app.api.endpoints import market, vision, nlp, social, memo
 
 app.include_router(market.router, prefix="/api/market", tags=["Market"])
 app.include_router(vision.router, prefix="/api/vision", tags=["Vision"])
 app.include_router(nlp.router, prefix="/api/nlp", tags=["NLP"])
 app.include_router(social.router, prefix="/api/social", tags=["Social"])
+app.include_router(memo.router, prefix="/api/memo", tags=["Memo"])
