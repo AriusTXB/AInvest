@@ -160,6 +160,21 @@ if "data" in st.session_state:
     with c4:
         color_class = f"recommendation-{rec.lower()}"
         st.markdown(f"<div class='metric-card' style='border-left-color:var(--{rec.lower()})'><div style='font-size:12px;color:#aaa'>AI CONVICTION</div><div class='{color_class}'>{rec}</div></div>", unsafe_allow_html=True)
+        if st.button("📈 Track Signal", type="secondary", use_container_width=True):
+            payload = {
+                "ticker": ticker_input,
+                "entry_price": market.get("price", 0),
+                "entry_date": datetime.now().strftime("%Y-%m-%d"),
+                "recommendation": rec
+            }
+            try:
+                p_res = requests.post(f"{API_BASE_URL}/api/portfolio/add", json=payload)
+                if p_res.status_code == 200:
+                    st.toast(f"Tracking {ticker_input} at ${payload['entry_price']}", icon="✅")
+                else:
+                    st.error("Tracking Failed")
+            except:
+                st.error("API Error")
 
     # Layout: Summary & Technicals / News & Social
     col_left, col_right = st.columns([2, 1])
@@ -170,7 +185,7 @@ if "data" in st.session_state:
         st.write(data.get("analysis_summary"))
         
         # Dashboard Tabs
-        tab_tech, tab_ocr = st.tabs(["📊 Technical Analysis", "📄 Document OCR Result"])
+        tab_tech, tab_ocr, tab_portfolio = st.tabs(["📊 Technical Analysis", "📄 Document OCR Result", "💼 Portfolio Tracker"])
         
         with tab_tech:
             st.plotly_chart(create_sparkline(indicators.get('rsi', 0), 100, "Momentum Score"), use_container_width=True)
@@ -182,6 +197,30 @@ if "data" in st.session_state:
                 st.table(pd.DataFrame(st.session_state.ocr_data))
             else:
                 st.write("Upload a PDF in the sidebar to populate this section with real financial data.")
+
+        with tab_portfolio:
+            try:
+                port_res = requests.get(f"{API_BASE_URL}/api/portfolio/")
+                if port_res.status_code == 200:
+                    portfolio_items = port_res.json()
+                    if portfolio_items:
+                        df_p = pd.DataFrame(portfolio_items)
+                        # Styling for P/L
+                        def color_pl(val):
+                            color = '#00e676' if val > 0 else '#ff1744'
+                            return f'color: {color}; font-weight: bold'
+                        
+                        st.dataframe(
+                            df_p[['ticker', 'recommendation', 'entry_price', 'current_price', 'p_l_percent']].style.applymap(color_pl, subset=['p_l_percent']),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    else:
+                        st.info("Your portfolio is currently empty. Track a signal to start monitoring performance.")
+                else:
+                    st.error("Failed to load portfolio")
+            except Exception as e:
+                st.error(f"Portfolio Error: {e}")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_right:

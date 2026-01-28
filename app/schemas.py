@@ -51,3 +51,15 @@ class InvestmentMemo(BaseModel):
     vision_context: Optional[Dict[str, Any]] = None # New PDF/Image context
     recommendation: str = "HOLD" # AI-generated recommendation
     analysis_summary: str
+
+class PortfolioItem(BaseModel):
+    """
+    Represents a tracked investment in the virtual portfolio.
+    """
+    id: Optional[str] = None
+    ticker: str
+    entry_price: float
+    entry_date: str
+    recommendation: str
+    current_price: Optional[float] = None
+    p_l_percent: Optional[float] = None

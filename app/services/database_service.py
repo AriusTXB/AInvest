@@ -2,7 +2,7 @@ import os
 import logging
 from typing import List, Dict, Any, Optional
 from supabase import create_client, Client
-from app.schemas import InvestmentMemo
+from app.schemas import InvestmentMemo, PortfolioItem
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -67,5 +67,53 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to fetch memos: {e}")
             return []
+
+    def save_to_portfolio(self, item: PortfolioItem) -> bool:
+        """
+        Saves a ticker to the 'portfolio' table.
+        """
+        if not self.client:
+            return False
+        try:
+            row = {
+                "ticker": item.ticker.upper(),
+                "entry_price": item.entry_price,
+                "entry_date": item.entry_date,
+                "recommendation": item.recommendation
+            }
+            # UPSERT to allow updating existing positions
+            self.client.table("portfolio").upsert(row, on_conflict="ticker").execute()
+            logger.info(f"Ticker {item.ticker} saved to portfolio.")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save to portfolio: {e}")
+            return False
+
+    def get_portfolio(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all items from the virtual portfolio.
+        """
+        if not self.client:
+            return []
+        try:
+            response = self.client.table("portfolio").select("*").execute()
+            return response.data
+        except Exception as e:
+            logger.error(f"Failed to fetch portfolio: {e}")
+            return []
+
+    def remove_from_portfolio(self, ticker: str) -> bool:
+        """
+        Removes a ticker from the virtual portfolio.
+        """
+        if not self.client:
+            return False
+        try:
+            self.client.table("portfolio").delete().eq("ticker", ticker.upper()).execute()
+            logger.info(f"Ticker {ticker} removed from portfolio.")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to remove from portfolio: {e}")
+            return False
 
 database_service = DatabaseService()
