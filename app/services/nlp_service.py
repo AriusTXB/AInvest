@@ -23,32 +23,72 @@ class NLPService:
             logger.warning("Activating NLP Mock Mode.")
             self.mock_mode = True
 
-    def _mock_summarize(self, text: str) -> str:
-        """Simple mock summarizer that handles common abbreviations."""
-        # Avoid splitting on common abbreviations
-        clean_text = text.replace("Inc.", "Inc").replace("Corp.", "Corp").replace("LTD.", "LTD")
-        sentences = clean_text.split('.')
-        if len(sentences) > 1:
-            first_sentence = sentences[0].strip()
-            # Restore abbreviation if it was the first word
-            if "Inc" in first_sentence: first_sentence = first_sentence.replace("Inc", "Inc.")
-            return first_sentence + "."
-        return text[:100] + "..."
+    def _chunk_text(self, text: str, max_chunk_size: int = 1000) -> List[str]:
+        """
+        Splits text into chunks of approximately max_chunk_size, without breaking sentences.
+        """
+        # Simple sentence-based chunking
+        # In a production app, we might use NLTK or Spacy for more robust sentence splitting
+        sentences = text.replace('!', '.').replace('?', '.').split('.')
+        chunks = []
+        current_chunk = ""
 
-    def summarize(self, text: str, max_length: int = 60, min_length: int = 10) -> str:
+        for sentence in sentences:
+            sentence = sentence.strip() + ". "
+            if len(current_chunk) + len(sentence) > max_chunk_size and current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = sentence
+            else:
+                current_chunk += sentence
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+
+    def _mock_summarize(self, text: str) -> str:
+        """Enhanced mock summarizer that takes key parts of multiple chunks."""
+        chunks = self._chunk_text(text, max_chunk_size=500)
+        summary_parts = []
+        for chunk in chunks[:3]: # Take first part of up to 3 chunks
+            clean_text = chunk.replace("Inc.", "Inc").replace("Corp.", "Corp").replace("LTD.", "LTD")
+            sentences = clean_text.split('.')
+            if sentences:
+                summary_parts.append(sentences[0].strip() + ".")
+        
+        return " ".join(summary_parts)
+
+    def summarize(self, text: str, max_length: int = 80, min_length: int = 20) -> str:
         """
-        Summarizes long financial text.
+        Summarizes long financial text using a map-reduce style chunking approach.
         """
-        if not text or len(text) < 50:
+        if not text or len(text) < 150:
             return text
 
         if self.mock_mode or not self.summarizer:
             return self._mock_summarize(text)
 
         try:
-            # Summarize (truncate input to 1024 tokens to avoid crash)
-            results = self.summarizer(text[:1024], max_length=max_length, min_length=min_length, do_sample=False)
-            return results[0]['summary_text']
+            # Chunk the text (FinBERT/BART usually have 1024 token limits)
+            # We use 1800 chars as a safe limit for DistilBART
+            chunks = self._chunk_text(text, max_chunk_size=1800)
+            
+            chunk_summaries = []
+            for chunk in chunks:
+                # Summarize each chunk
+                res = self.summarizer(chunk, max_length=max_length, min_length=min_length, do_sample=False)
+                chunk_summaries.append(res[0]['summary_text'])
+            
+            # Combine summaries
+            combined_summary = " ".join(chunk_summaries)
+            
+            # If the result is still very long, summarize the summary
+            if len(chunks) > 1 and len(combined_summary) > 500:
+                final_res = self.summarizer(combined_summary[:2000], max_length=150, min_length=50, do_sample=False)
+                return final_res[0]['summary_text']
+            
+            return combined_summary
+
         except Exception as e:
             logger.error(f"Summarization failed: {e}")
             return self._mock_summarize(text)

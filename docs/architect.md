@@ -17,9 +17,11 @@ It follows a **Micro-Service style Monolith** architecture where a single FastAP
 - **Modules**:
   - `market`: Historical data & Technical Analysis (SMA, RSI, MACD).
   - `nlp`: Sentiment analysis on news headlines.
+  - `news`: Real-time news aggregation from financial sources.
   - `social`: Social media signal simulation/scraping.
   - `memo`: Aggregation service that combines all inputs into a recommendation.
-  - `vision`: (Planned/Stub) Document OCR/analysis.
+  - `vision`: Document OCR/analysis via DeepSeek.
+  - `portfolio`: Virtual trade tracking and P/L logic.
 
 ### 3. Services Layer
 - **Location**: `/app/services/`

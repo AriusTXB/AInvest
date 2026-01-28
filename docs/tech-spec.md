@@ -33,6 +33,11 @@
 #### NLP
 - `POST /api/nlp/analyze`: Analyzing text sentiment.
 
+#### Portfolio
+- `GET /api/portfolio/`: List all tracked positions with live P/L.
+- `POST /api/portfolio/add`: Add a new investment position.
+- `DELETE /api/portfolio/{ticker}`: Remove a position.
+
 ## Data Schemas (Pydantic)
 
 ### InvestmentMemo
@@ -40,15 +45,25 @@
 {
   "ticker": "string",
   "generated_at": "datetime",
-  "market_data": {
-    "price": "float",
-    "indicators": {
-      "rsi": "float",
-      "macd": "float"
-    }
-  },
-  "social_context": ["SocialPost"],
-  "recommendation": "BUY|SELL|HOLD"
+  "market_data": "MarketData",
+  "social_context": "SocialContext",
+  "news_context": "NewsContext",
+  "vision_context": "object",
+  "recommendation": "BUY|SELL|HOLD",
+  "analysis_summary": "string"
+}
+```
+
+### PortfolioItem
+```json
+{
+  "id": "string?",
+  "ticker": "string",
+  "entry_price": "float",
+  "entry_date": "string",
+  "recommendation": "string",
+  "current_price": "float?",
+  "p_l_percent": "float?"
 }
 ```
 
