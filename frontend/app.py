@@ -145,8 +145,8 @@ if "data" in st.session_state:
     data = st.session_state.data
     market = data.get("market_data", {})
     indicators = market.get("indicators", {})
-    social = data.get("social_context", [])
-    news = data.get("news_sentiment", {})
+    social = data.get("social_context", {})
+    news_context = data.get("news_context", {})
     rec = data.get("recommendation", "HOLD")
 
     # Header Stats
@@ -188,11 +188,23 @@ if "data" in st.session_state:
         # News Tab
         st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
         st.subheader("📰 News Intelligence")
-        if news:
-            st.markdown(f"**Primary Headline:**\n*{news.get('headline_analyzed')}*")
+        if news_context:
+            items = news_context.get("items", [])
+            overall_sent = news_context.get("overall_sentiment", "neutral")
+            
+            st.markdown(f"**Overall Signal:** <span class='sentiment-tag tag-{overall_sent}'>{overall_sent}</span>", unsafe_allow_html=True)
             st.divider()
-            st.markdown("**AI Summary:**")
-            st.success(news.get("summary", "Summarization pending..."))
+            
+            for item in items:
+                label = item.get("sentiment", {}).get("label", "neutral")
+                st.markdown(f"""
+                <div style='margin-bottom: 15px; border-left: 2px solid rgba(255,255,255,0.1); padding-left: 10px;'>
+                    <a href='{item.get("link")}' target='_blank' style='text-decoration:none; color:#3d5afe; font-weight:600; font-size:14px;'>{item.get("title")}</a><br>
+                    <span class='sentiment-tag tag-{label}' style='font-size:9px;'>{label}</span>
+                    <span style='font-size:11px; color:#666;'> | {item.get("publisher")}</span>
+                    <div style='font-size:12px; color:#aaa; margin-top:5px;'>{item.get("summary")[:120]}...</div>
+                </div>
+                """, unsafe_allow_html=True)
             
             # Social Consensus Logic
             st.subheader("💬 Social Consensus")

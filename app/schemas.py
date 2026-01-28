@@ -26,6 +26,19 @@ class SocialContext(BaseModel):
     data: List[SocialPost]
     summary: str
 
+class NewsItem(BaseModel):
+    title: str
+    link: str
+    publisher: str
+    timestamp: int
+    sentiment: Dict[str, Any]
+    summary: str
+
+class NewsContext(BaseModel):
+    items: List[NewsItem]
+    overall_sentiment: str
+    average_score: float
+
 class InvestmentMemo(BaseModel):
     """
     The aggregated report for a specific ticker.
@@ -33,8 +46,8 @@ class InvestmentMemo(BaseModel):
     ticker: str
     generated_at: str
     market_data: Optional[MarketData] = None
-    social_context: Optional[SocialContext] = None # Updated to structured object
-    news_sentiment: Optional[Dict[str, Any]] = None
+    social_context: Optional[SocialContext] = None 
+    news_context: Optional[NewsContext] = None # Replacing news_sentiment
     vision_context: Optional[Dict[str, Any]] = None # New PDF/Image context
     recommendation: str = "HOLD" # AI-generated recommendation
     analysis_summary: str
