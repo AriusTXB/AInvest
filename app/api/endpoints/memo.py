@@ -3,6 +3,7 @@ from app.schemas import InvestmentMemo, MarketData, SocialPost
 from app.services.market_service import market_service
 from app.services.social_service import social_service
 from app.services.nlp_service import nlp_service
+from app.services.database_service import database_service
 from datetime import datetime
 import random
 
@@ -23,17 +24,26 @@ def _generate_recommendation(market: dict, sentiment: dict, social: dict) -> str
     """Simple logic to generate a BUY/SELL/HOLD signal."""
     score = 0
     
-    # Market Logic
+    # 1. Market Logic (RSI)
     rsi = market.get("indicators", {}).get("rsi", 50)
-    if rsi < 30: score += 1 # Oversold
-    elif rsi > 70: score -= 1 # Overbought
+    if rsi < 30: score += 1.5 # Oversold (Buy Weight)
+    elif rsi > 70: score -= 1.5 # Overbought (Sell Weight)
     
-    # NLP Logic
+    # 2. News Logic
     sent_label = sentiment.get("sentiment", {}).get("label", "neutral")
-    if sent_label == "positive": score += 1
-    elif sent_label == "negative": score -= 1
+    sent_score = sentiment.get("sentiment", {}).get("score", 0.5)
+    if sent_label == "positive" and sent_score > 0.8: score += 1
+    elif sent_label == "negative" and sent_score > 0.8: score -= 1
     
-    # Result
+    # 3. Social Logic (Aggregated)
+    social_posts = social.get("data", [])
+    if social_posts:
+        pos_posts = len([p for p in social_posts if p.get("sentiment_label") == "positive"])
+        neg_posts = len([p for p in social_posts if p.get("sentiment_label") == "negative"])
+        if pos_posts > neg_posts: score += 0.5
+        elif neg_posts > pos_posts: score -= 0.5
+    
+    # Result Synthesis
     if score >= 1: return "BUY"
     if score <= -1: return "SELL"
     return "HOLD"
@@ -62,17 +72,25 @@ async def get_investment_memo(ticker: str):
     # 4. Generate Recommendation
     rec = _generate_recommendation(market_data, sentiment_result, social_data)
     
-    # 5. Build Response
-    return InvestmentMemo(
+    # 5. Build Response Object
+    memo = InvestmentMemo(
         ticker=ticker.upper(),
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         market_data=market_data,
-        social_context=social_data["data"],
+        social_context=social_data, # Now passing the full dict/object
         news_sentiment={
             "headline_analyzed": latest_news_content,
             "analysis": sentiment_result,
             "summary": summary_result
         },
         recommendation=rec,
-        analysis_summary=f"Market indicators suggest {rec}. Analyzed content: '{latest_news_content[:50]}...' Summary: {summary_result}"
+        analysis_summary=f"Analysis suggests {rec}. Market: RSI {market_data['indicators']['rsi']}. Social: {social_data['summary']}"
     )
+
+    # 6. Async Persistence (Best effort)
+    try:
+        database_service.save_memo(memo)
+    except Exception as e:
+        logger.error(f"Persistence failed: {e}")
+
+    return memo

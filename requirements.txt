@@ -24,3 +24,7 @@ scikit-learn>=1.4.0
 
 # Social Scraper / Mock
 faker>=22.6.0
+supabase>=2.3.0
+
+# DeepSeek / AI OCR
+openai>=1.12.0

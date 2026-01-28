@@ -4,9 +4,13 @@ import pandas as pd
 import io
 import re
 import os
-from typing import Dict, Any, List
+import numpy as np
+import cv2
+from typing import Dict, Any, List, Union
 import logging
+import base64
 from dotenv import load_dotenv
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
@@ -17,17 +21,44 @@ logger = logging.getLogger(__name__)
 
 class VisionService:
     def __init__(self):
-        # Configuration for Tesseract path from environment or standard location
-        self.tesseract_cmd = os.getenv('TESSERACT_PATH', r'C:\Program Files\Tesseract-OCR\tesseract.exe')
-        self.poppler_path = os.getenv('POPPLER_PATH', None)
+        self.tesseract_path = os.getenv("TESSERACT_PATH", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+        self.poppler_path = os.getenv("POPPLER_PATH", r"C:\poppler\Library\bin")
+        pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
         
-        try:
-            if os.path.exists(self.tesseract_cmd):
-                pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
-            else:
-                logger.warning(f"Tesseract not found at {self.tesseract_cmd}. OCR may fail.")
-        except Exception as e:
-            logger.warning(f"Tesseract configuration failed: {e}")
+        # DeepSeek Config
+        self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+        self.deepseek_base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        self.deepseek_model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        
+        if self.deepseek_api_key:
+            self.client = OpenAI(api_key=self.deepseek_api_key, base_url=self.deepseek_base_url)
+        else:
+            self.client = None
+
+    def _check_binaries(self):
+        """Internal check for Tesseract/Poppler presence."""
+        if not os.path.exists(self.tesseract_path):
+            logger.warning(f"Tesseract not found at {self.tesseract_path}. OCR will fail.")
+            return False
+        return True
+
+    def _preprocess_image(self, image: Any) -> Any:
+        """
+        Enhance image quality for better OCR results.
+        Grayscale -> Thresholding.
+        """
+        # Convert PIL image to OpenCV format
+        open_cv_image = np.array(image.convert('RGB'))
+        # Convert RGB to BGR
+        open_cv_image = open_cv_image[:, :, ::-1].copy()
+        
+        # 1. Grayscale
+        gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
+        
+        # 2. Thresholding (Otsu's binarization)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        return thresh
 
     def _mock_balance_sheet(self) -> List[Dict[str, Any]]:
         """Returns a dummy balance sheet for demonstration if OCR fails."""
@@ -43,6 +74,7 @@ class VisionService:
     def _parse_text(self, text: str) -> List[Dict[str, Any]]:
         """
         Improved heuristic parser for financial data.
+        Handles currencies, negative numbers in parents, and dots.
         """
         lines = text.split('\n')
         data = []
@@ -51,20 +83,26 @@ class VisionService:
             if not line:
                 continue
                 
-            # Regex to find lines ending with two numeric values (Current, Previous)
-            # Handles commas, dots, and common currency symbols
-            # Example: "Total Assets $ 12,345.00 11,000.00"
-            match = re.search(r'^(.*?)\s+[\$€£]?\s*([\d,.]+)\s+[\$€£]?\s*([\d,.]+)$', line)
+            # Improved regex:
+            # 1. Capture Item name (starts line, ends before numbers)
+            # 2. Capture two numeric blocks (allows $, %, (, ), -, , and .)
+            pattern = r'^(.*?)\s+([\$€£]?\s*[\(\-]?[\d,.]+%?[\)]?)\s+([\$€£]?\s*[\(\-]?[\d,.]+%?[\)]?)$'
+            match = re.search(pattern, line)
             
             if match:
                 item = match.group(1).strip()
                 val_curr = match.group(2).strip()
                 val_prev = match.group(3).strip()
                 
-                # Basic cleaning: remove starting/trailing punctuation and dots from item
-                item = re.sub(r'^[:\.\s\-_]+|[:\.\s\-_]+$', '', item)
+                # Cleaning: remove starting/trailing symbols from item
+                item = re.sub(r'^[:\.\s\-_/]+|[:\.\s\-_/]+$', '', item)
                 
-                if item and len(item) > 3:
+                # Cleaning values: remove currency symbols and whitespace
+                val_curr = re.sub(r'[\$€£\s]', '', val_curr)
+                val_prev = re.sub(r'[\$€£\s]', '', val_prev)
+                
+                # Filter out garbage
+                if item and len(item) > 2 and not item.isnumeric():
                     data.append({
                         "Item": item,
                         "Current": val_curr,
@@ -72,13 +110,78 @@ class VisionService:
                     })
         return data
 
-    def extract_from_pdf(self, pdf_bytes: bytes) -> Dict[str, Any]:
+    def _process_deepseek(self, pdf_bytes: bytes) -> List[Dict[str, Any]]:
+        """
+        AI-powered extraction using DeepSeek.
+        Sends a summary of the document for extraction or processes first few pages.
+        Note: For a production app, we would rasterize images or use a vision-capable endpoint.
+        """
+        if not self.client:
+            logger.warning("DeepSeek client not configured. Falling back to mock/tesseract.")
+            return []
+
+        try:
+            # We rasterize the first page for the AI to analyze
+            images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1, poppler_path=self.poppler_path)
+            if not images:
+                return []
+            
+            # Simple simulation: Extracting text from first page via Tesseract as context
+            # or in a real scenario, sending the image to a Vision model.
+            # DeepSeek V3/R1 has great reasoning but we use text-based extraction context here.
+            text_context = pytesseract.image_to_string(self._preprocess_image(images[0]))
+            
+            prompt = f"""
+            Extract the following financial data from this document text into a JSON list of objects.
+            Each object must have 'Item', 'Current', and 'Previous' keys.
+            Only return the JSON list, nothing else.
+            
+            TEXT:
+            {text_context[:4000]}
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.deepseek_model,
+                messages=[
+                    {"role": "system", "content": "You are a financial data extraction assistant. Return JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            
+            result_json = response.choices[0].message.content
+            # The model should return {"data": [...]} if we asked for JSON list in some formats, 
+            # or just the list if allowed. We'll handle both.
+            import json
+            extracted = json.loads(result_json)
+            if isinstance(extracted, dict) and "data" in extracted:
+                return extracted["data"]
+            return extracted if isinstance(extracted, list) else []
+
+        except Exception as e:
+            logger.error(f"DeepSeek OCR failed: {e}")
+            return []
+
+    def extract_from_pdf(self, pdf_bytes: bytes, engine: str = "tesseract") -> Dict[str, Any]:
         """
         Converts PDF pages to images, then runs OCR to extract financial tables.
-        Processes all pages.
+        Processes all pages using selected engine.
         """
+        if engine == "deepseek":
+            logger.info("Using DeepSeek for AI-powered extraction...")
+            deep_data = self._process_deepseek(pdf_bytes)
+            if deep_data:
+                return {
+                    "status": "success",
+                    "data": deep_data,
+                    "metadata": {"engine": "deepseek", "items_found": len(deep_data)}
+                }
+            logger.warning("DeepSeek failed or returned empty. Falling back to Tesseract.")
+
         try:
             # 1. Convert PDF to Images
+            if engine == "tesseract":
+                self._check_binaries()
             try:
                 images = convert_from_bytes(pdf_bytes, poppler_path=self.poppler_path)
             except Exception as e:
@@ -99,7 +202,9 @@ class VisionService:
             for i, image in enumerate(images):
                 logger.info(f"Processing page {i+1}/{page_count}...")
                 try:
-                    text = pytesseract.image_to_string(image)
+                    # Apply image preprocessing for better OCR
+                    processed_img = self._preprocess_image(image)
+                    text = pytesseract.image_to_string(processed_img)
                     page_data = self._parse_text(text)
                     if page_data:
                         for entry in page_data:

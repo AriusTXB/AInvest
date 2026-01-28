@@ -6,7 +6,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post("/extract")
-async def extract_table(file: UploadFile = File(...)):
+async def extract_table(
+    file: UploadFile = File(...),
+    engine: str = "tesseract"
+):
     """
     Upload a PDF Financial Report.
     Returns extracted Balance Sheet data.
@@ -15,6 +18,6 @@ async def extract_table(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
     content = await file.read()
-    result = vision_service.extract_from_pdf(content)
+    result = vision_service.extract_from_pdf(content, engine=engine)
     
     return result

@@ -1,8 +1,11 @@
 import streamlit as st
 import requests
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 import base64
 
 # Configuration
@@ -87,11 +90,18 @@ analyze_btn = st.sidebar.button("Run Intelligence Engine", type="primary", use_c
 st.sidebar.markdown("---")
 st.sidebar.subheader("📄 Document Analysis")
 uploaded_file = st.sidebar.file_uploader("Upload Financial Report (PDF)", type="pdf")
+ocr_engine = st.sidebar.selectbox("OCR Engine", options=["Tesseract (Local)", "DeepSeek (AI)"])
+engine_map = {"Tesseract (Local)": "tesseract", "DeepSeek (AI)": "deepseek"}
+
 if uploaded_file and st.sidebar.button("Extract Data"):
     with st.sidebar:
-        with st.spinner("Processing Document..."):
+        with st.spinner(f"Processing via {ocr_engine}..."):
             files = {"file": (uploaded_file.name, uploaded_file.read(), "application/pdf")}
-            v_res = requests.post(f"{API_BASE_URL}/api/vision/extract", files=files)
+            v_res = requests.post(
+                f"{API_BASE_URL}/api/vision/extract", 
+                files=files,
+                params={"engine": engine_map[ocr_engine]}
+            )
             if v_res.status_code == 200:
                 st.session_state.ocr_data = v_res.json()["data"]
                 st.success("Extracted successfully!")
@@ -187,20 +197,29 @@ if "data" in st.session_state:
             # Social Consensus Logic
             st.subheader("💬 Social Consensus")
             if social:
-                pos_count = len([p for p in social if p.get('sentiment_label') == 'positive'])
-                consensus = round((pos_count / len(social)) * 100) if social else 50
-                st.write(f"Community Sentiment: {consensus}% Bullish")
-                st.progress(consensus / 100)
+                social_posts = social.get("data", [])
+                social_summary = social.get("summary", "")
+                social_source = social.get("source", "")
                 
-                for post in social[:5]:
-                    label = post.get('sentiment_label', 'neutral')
-                    st.markdown(f"""
-                    <div class='social-post'>
-                        <span class='sentiment-tag tag-{label}'>{label}</span>
-                        <span style='font-size:12px; color:#aaa; margin-left:10px'>@{post.get('handle')}</span>
-                        <div style='font-size:13px; margin-top:5px'>{post.get('content')}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                st.caption(f"Source: {social_source}")
+                st.markdown(f"**Insight:** {social_summary}")
+                
+                if social_posts:
+                    pos_count = len([p for p in social_posts if p.get('sentiment_label') == 'positive'])
+                    consensus = round((pos_count / len(social_posts)) * 100) if social_posts else 50
+                    st.write(f"Community Sentiment: {consensus}% Bullish")
+                    st.progress(consensus / 100)
+                    
+                    for post in social_posts[:5]:
+                        label = post.get('sentiment_label', 'neutral')
+                        st.markdown(f"""
+                        <div class='social-post'>
+                            <span class='sentiment-tag tag-{label}'>{label}</span>
+                            <span style='font-size:12px; color:#aaa; margin-left:10px'>@{post.get('handle')}</span>
+                            <div style='font-size:13px; margin-top:5px'>{post.get('content')}</div>
+                            <div style='font-size:10px; color:#666'>{post.get('source')} | {post.get('timestamp')[:16]}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
 else:
