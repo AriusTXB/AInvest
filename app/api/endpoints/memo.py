@@ -51,12 +51,13 @@ async def get_investment_memo(ticker: str):
         # For this demo, let's raise error to show we tried real data.
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found: {market_data['error']}")
     
-    # 2. Fetch Social Context (Generic for MVP, but attached)
-    social_data = social_service.get_social_feed(limit=3)
+    # 2. Fetch Social Context (Live Reddit Data)
+    social_data = social_service.get_social_feed(ticker=ticker, limit=3)
     
-    # 3. Fetch & Analyze News (Simulated)
-    latest_news_headline = _fetch_mock_news(ticker)
-    sentiment_result = nlp_service.analyze_sentiment(latest_news_headline)
+    # 3. Fetch & Analyze News (Simulated with Summarization)
+    latest_news_content = _fetch_mock_news(ticker)
+    sentiment_result = nlp_service.analyze_sentiment(latest_news_content)
+    summary_result = nlp_service.summarize(latest_news_content)
     
     # 4. Generate Recommendation
     rec = _generate_recommendation(market_data, sentiment_result, social_data)
@@ -68,9 +69,10 @@ async def get_investment_memo(ticker: str):
         market_data=market_data,
         social_context=social_data["data"],
         news_sentiment={
-            "headline_analyzed": latest_news_headline,
-            "analysis": sentiment_result
+            "headline_analyzed": latest_news_content,
+            "analysis": sentiment_result,
+            "summary": summary_result
         },
         recommendation=rec,
-        analysis_summary=f"Market indicators suggest {rec}. Analyzed headline: '{latest_news_headline}'."
+        analysis_summary=f"Market indicators suggest {rec}. Analyzed content: '{latest_news_content[:50]}...' Summary: {summary_result}"
     )
