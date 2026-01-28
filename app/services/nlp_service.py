@@ -1,6 +1,7 @@
 from transformers import pipeline
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from app.services.news_scraper_service import news_scraper_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +17,14 @@ class NLPService:
             # Attempt to load Financial BERT model
             logger.info("Loading FinBERT and Summarization models... This might take a moment.")
             self.classifier = pipeline("sentiment-analysis", model="ProsusAI/finbert")
-            self.summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+            
+            # Use text-generation or text2text-generation if summarization is missing in v5.0.0
+            try:
+                self.summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+            except Exception:
+                logger.warning("Summarization task not found, trying text-generation fallback.")
+                self.summarizer = pipeline("text-generation", model="sshleifer/distilbart-cnn-12-6")
+            
             logger.info("NLP models loaded successfully.")
         except Exception as e:
             logger.error(f"Failed to load NLP models: {e}")
@@ -77,7 +85,9 @@ class NLPService:
             for chunk in chunks:
                 # Summarize each chunk
                 res = self.summarizer(chunk, max_length=max_length, min_length=min_length, do_sample=False)
-                chunk_summaries.append(res[0]['summary_text'])
+                # Handle both 'summary_text' (summarization task) and 'generated_text' (text-generation task)
+                summary_chunk = res[0].get('summary_text') or res[0].get('generated_text')
+                chunk_summaries.append(summary_chunk)
             
             # Combine summaries
             combined_summary = " ".join(chunk_summaries)
@@ -85,13 +95,39 @@ class NLPService:
             # If the result is still very long, summarize the summary
             if len(chunks) > 1 and len(combined_summary) > 500:
                 final_res = self.summarizer(combined_summary[:2000], max_length=150, min_length=50, do_sample=False)
-                return final_res[0]['summary_text']
+                return final_res[0].get('summary_text') or final_res[0].get('generated_text')
             
             return combined_summary
 
         except Exception as e:
             logger.error(f"Summarization failed: {e}")
             return self._mock_summarize(text)
+
+    def summarize_article(self, url: str) -> Dict[str, Any]:
+        """
+        Scrapes an article from a URL and returns a summary.
+        """
+        logger.info(f"Summarizing article from URL: {url}")
+        text = news_scraper_service.scrape_article(url)
+        
+        if not text:
+            logger.warning(f"Could not extract text from {url}")
+            return {
+                "url": url,
+                "summary": None,
+                "status": "error",
+                "message": "Could not extract content from the provided URL. The site might be blocking or uses unsupported dynamic content."
+            }
+            
+        summary = self.summarize(text)
+        
+        return {
+            "url": url,
+            "summary": summary,
+            "status": "success",
+            "length_extracted": len(text),
+            "summary_length": len(summary)
+        }
 
     def _mock_analyze(self, text: str) -> Dict[str, Any]:
         """Simple keyword-based mock analysis."""
