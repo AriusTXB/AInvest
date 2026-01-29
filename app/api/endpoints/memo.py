@@ -24,7 +24,7 @@ def _generate_recommendation(market: dict, sentiment: dict, social: dict) -> str
     elif rsi > 70: score -= 1.5 # Overbought (Sell Weight)
     
     # 2. News Logic (Aggregated)
-    news_items = news.get("items", [])
+    news_items = sentiment.get("items", [])
     if news_items:
         avg_score = sum([n["sentiment"]["score"] for n in news_items]) / len(news_items)
         pos_count = len([n for n in news_items if n["sentiment"]["label"] == "positive"])

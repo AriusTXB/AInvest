@@ -33,7 +33,7 @@ class DatabaseService:
 
         try:
             # Convert memo to dict and handle nested objects for JSONB columns
-            memo_data = memo.dict()
+            memo_data = memo.model_dump()
             
             # Prepare row for Supabase
             row = {
@@ -41,7 +41,7 @@ class DatabaseService:
                 "generated_at": memo_data["generated_at"],
                 "market_data": memo_data["market_data"],
                 "social_context": memo_data["social_context"],
-                "news_sentiment": memo_data["news_sentiment"],
+                "news_context": memo_data["news_context"],
                 "recommendation": memo_data["recommendation"],
                 "analysis_summary": memo_data["analysis_summary"]
             }

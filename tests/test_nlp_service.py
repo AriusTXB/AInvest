@@ -27,7 +27,12 @@ class TestNLPService(unittest.TestCase):
         self.service.summarizer = mock_summarizer
         self.service.mock_mode = False
 
-        result = self.service.summarize("This is a very long text that needs to be summarized into something shorter.")
+        # Input must be > 150 chars to bypass early return guard in summarize()
+        long_input = (
+            "This is a very long financial text that needs to be summarized into something shorter. "
+            "The company reported strong earnings growth in the second quarter driven by increased demand."
+        )
+        result = self.service.summarize(long_input)
         self.assertEqual(result, "Short summary.")
 
     def test_mock_fallback_on_failure(self):

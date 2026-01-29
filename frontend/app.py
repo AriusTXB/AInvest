@@ -237,13 +237,30 @@ if "data" in st.session_state:
             for item in items:
                 label = item.get("sentiment", {}).get("label", "neutral")
                 st.markdown(f"""
-                <div style='margin-bottom: 15px; border-left: 2px solid rgba(255,255,255,0.1); padding-left: 10px;'>
+                <div style='margin-bottom: 5px; border-left: 2px solid rgba(255,255,255,0.1); padding-left: 10px;'>
                     <a href='{item.get("link")}' target='_blank' style='text-decoration:none; color:#3d5afe; font-weight:600; font-size:14px;'>{item.get("title")}</a><br>
                     <span class='sentiment-tag tag-{label}' style='font-size:9px;'>{label}</span>
                     <span style='font-size:11px; color:#666;'> | {item.get("publisher")}</span>
-                    <div style='font-size:12px; color:#aaa; margin-top:5px;'>{item.get("summary")[:120]}...</div>
                 </div>
                 """, unsafe_allow_html=True)
+                
+                # Checkbox-style button for summary to avoid UI clutter
+                if st.button(f"🔍 Summarize Full Article", key=f"sum_{item.get('link')[:50]}"):
+                    with st.spinner("Extracting & analyzing full article..."):
+                        try:
+                            s_res = requests.post(
+                                f"{API_BASE_URL}/api/nlp/summarize-url",
+                                json={"url": item.get("link")}
+                            )
+                            if s_res.status_code == 200:
+                                summary_data = s_res.json()
+                                st.info(f"**AI Summary:**\n\n{summary_data.get('summary')}")
+                            else:
+                                st.error("Summarization failed or blocked by source.")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                
+                st.markdown(f"<div style='font-size:12px; color:#aaa; margin-bottom:15px;'>{item.get('summary')[:120]}...</div>", unsafe_allow_html=True)
             
             # Social Consensus Logic
             st.subheader("💬 Social Consensus")
